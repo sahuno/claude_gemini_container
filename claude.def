@@ -1,0 +1,92 @@
+Bootstrap: docker
+From: node:20-slim
+
+%labels
+    Author sahuno
+    Version 1.0
+    Description Container with Claude Code and Gemini CLI tools
+
+%environment
+    # Set Node.js environment
+    export NODE_ENV=production
+    export NPM_CONFIG_PREFIX=/opt/npm-global
+    export PATH=/opt/npm-global/bin:$PATH
+    
+    # API Keys (to be set at runtime)
+    # export ANTHROPIC_API_KEY=""
+    # export GEMINI_API_KEY=""
+
+%post
+    # Update and install essential packages
+    apt-get update && apt-get install -y \
+        curl \
+        git \
+        wget \
+        ca-certificates \
+        gnupg \
+        lsb-release \
+        vim \
+        nano \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Create npm global directory
+    mkdir -p /opt/npm-global
+    npm config set prefix '/opt/npm-global'
+    
+    # Install Claude Code
+    npm install -g @anthropic-ai/claude-code
+    
+    # Install Gemini CLI
+    npm install -g @google/gemini-cli
+    
+    # Create working directory
+    mkdir -p /workspace
+    
+    # Clean npm cache
+    npm cache clean --force
+    
+    # Create a startup script
+    cat > /usr/local/bin/container-info << 'EOF'
+#!/bin/bash
+echo "====================================="
+echo "Claude Code & Gemini CLI Container"
+echo "====================================="
+echo ""
+echo "Available tools:"
+echo "- Claude Code: claude-code"
+echo "- Gemini CLI: gemini"
+echo ""
+echo "Environment variables to set:"
+echo "- ANTHROPIC_API_KEY (for Claude Code)"
+echo "- GEMINI_API_KEY (for Gemini CLI)"
+echo ""
+echo "Working directory: /workspace"
+echo "====================================="
+EOF
+    chmod +x /usr/local/bin/container-info
+
+%runscript
+    exec /bin/bash
+
+%help
+    This container includes both Claude Code and Gemini CLI tools.
+    
+    Usage:
+    1. Build the container:
+       singularity build claude-gemini-cli.sif claude-gemini-cli.def
+    
+    2. Run with API keys:
+       singularity shell \
+         --env ANTHROPIC_API_KEY=your-anthropic-key \
+         --env GEMINI_API_KEY=your-gemini-key \
+         claude-gemini-cli.sif
+    
+    3. Or export keys before running:
+       export ANTHROPIC_API_KEY="your-anthropic-key"
+       export GEMINI_API_KEY="your-gemini-key"
+       singularity shell claude-gemini-cli.sif
+    
+    4. Inside the container:
+       - Use 'claude-code' for Claude Code CLI
+       - Use 'gemini' for Gemini CLI
+       - Run 'container-info' for quick reference
