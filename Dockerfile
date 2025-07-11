@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y \
     wget \
     vim \
     nano \
+    # Process monitoring tools for Claude
+    procps \
     # Python and scientific computing dependencies
     python3 \
     python3-pip \
@@ -54,7 +56,8 @@ ENV PATH=$NPM_CONFIG_PREFIX/bin:$PATH
 RUN mkdir -p $NPM_CONFIG_PREFIX
 
 # Install Claude Code and Gemini CLI
-RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli
+# Using @latest to ensure we get the most recent version
+RUN npm install -g @anthropic-ai/claude-code@latest @google/gemini-cli@latest
 
 # Create workspace directory
 RUN mkdir -p /workspace
