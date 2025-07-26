@@ -1,0 +1,52 @@
+name: Debug Docker Build
+
+on:
+  workflow_dispatch:
+
+env:
+  DOCKER_REGISTRY: docker.io
+  DOCKER_IMAGE: sahuno/claude_gemini_container
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Debug secrets
+      run: |
+        echo "Checking if secrets are available..."
+        if [ -z "${{ secrets.DOCKER_USERNAME }}" ]; then
+          echo "ERROR: DOCKER_USERNAME secret is not set or empty"
+        else
+          echo "SUCCESS: DOCKER_USERNAME is set (length: ${#DOCKER_USERNAME})"
+        fi
+        
+        if [ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+          echo "ERROR: DOCKERHUB_TOKEN secret is not set or empty"
+        else
+          echo "SUCCESS: DOCKERHUB_TOKEN is set"
+        fi
+        
+        echo "Repository: ${{ github.repository }}"
+        echo "Event: ${{ github.event_name }}"
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Test Docker login
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      continue-on-error: true
+    
+    - name: Check login result
+      run: |
+        if docker info 2>/dev/null | grep -q "Username"; then
+          echo "Docker login successful!"
+        else
+          echo "Docker login failed - check your secrets"
+        fi
