@@ -17,6 +17,10 @@ env:
   DOCKER_REGISTRY: docker.io
   DOCKER_IMAGE: sahuno/claude_gemini_container
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   check-updates:
     runs-on: ubuntu-latest
@@ -136,9 +140,14 @@ jobs:
         LAST_BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
         EOF
         
-        # Commit and push
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add .last_built_versions
-        git commit -m "Update CLI versions - Claude: $CLAUDE_VERSION, Gemini: $GEMINI_VERSION" || echo "No changes"
-        git push || echo "No push needed"
+        # Check if there are changes
+        if git diff --quiet .last_built_versions 2>/dev/null; then
+          echo "No version changes to commit"
+        else
+          # Commit and push
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .last_built_versions
+          git commit -m "Update CLI versions - Claude: $CLAUDE_VERSION, Gemini: $GEMINI_VERSION"
+          git push origin HEAD:main
+        fi
