@@ -48,7 +48,8 @@ RUN pip install --upgrade pip && \
     scipy \
     scikit-learn \
     jupyter \
-    ipython
+    ipython \
+    markitdown
 
 # Set up npm global directory
 ENV NPM_CONFIG_PREFIX=/opt/npm-global
@@ -74,7 +75,7 @@ RUN echo '#!/bin/bash' > /usr/local/bin/container-info && \
     echo 'echo ""' >> /usr/local/bin/container-info && \
     echo 'echo "Python packages installed:"' >> /usr/local/bin/container-info && \
     echo 'echo "  numpy, pandas, matplotlib, seaborn, plotly,"' >> /usr/local/bin/container-info && \
-    echo 'echo "  scipy, scikit-learn, jupyter, ipython"' >> /usr/local/bin/container-info && \
+    echo 'echo "  scipy, scikit-learn, jupyter, ipython, markitdown"' >> /usr/local/bin/container-info && \
     echo 'echo ""' >> /usr/local/bin/container-info && \
     echo 'echo "Set environment variables:"' >> /usr/local/bin/container-info && \
     echo 'echo "  export ANTHROPIC_API_KEY=your_key_here"' >> /usr/local/bin/container-info && \
