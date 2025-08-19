@@ -1,6 +1,11 @@
 # Multi-stage build for Claude and Gemini Container with Python & Plotting
 FROM node:20-slim AS base
 
+# Build arguments to force cache invalidation when CLI versions change
+ARG CLAUDE_VERSION=latest
+ARG GEMINI_VERSION=latest
+ARG BUILD_DATE
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
@@ -57,8 +62,10 @@ ENV PATH=$NPM_CONFIG_PREFIX/bin:$PATH
 RUN mkdir -p $NPM_CONFIG_PREFIX
 
 # Install Claude Code and Gemini CLI
-# Using @latest to ensure we get the most recent version
-RUN npm install -g @anthropic-ai/claude-code@latest @google/gemini-cli@latest
+# Build args force cache invalidation when versions change
+RUN echo "Installing Claude Code version: ${CLAUDE_VERSION}, Gemini CLI version: ${GEMINI_VERSION}" && \
+    npm cache clean --force && \
+    npm install -g @anthropic-ai/claude-code@latest @google/gemini-cli@latest
 
 # Create workspace directory
 RUN mkdir -p /workspace
@@ -91,6 +98,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 LABEL maintainer="sahuno"
 LABEL description="Claude Code and Gemini CLI container with Python and plotting capabilities"
 LABEL version="1.0"
+LABEL claude.version="${CLAUDE_VERSION}"
+LABEL gemini.version="${GEMINI_VERSION}"
+LABEL build.date="${BUILD_DATE}"
 
 # Default command
 CMD ["/bin/bash"]
