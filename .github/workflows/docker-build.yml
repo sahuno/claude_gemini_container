@@ -27,20 +27,31 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.decision.outputs.should_build }}
+      claude_version: ${{ steps.cli_versions.outputs.claude_version }}
+      gemini_version: ${{ steps.cli_versions.outputs.gemini_version }}
+      build_date: ${{ steps.cli_versions.outputs.build_date }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Resolve CLI versions
+        id: cli_versions
+        run: |
+          CLAUDE_VERSION=$(npm view @anthropic-ai/claude-code version)
+          GEMINI_VERSION=$(npm view @google/gemini-cli version)
+          echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
+          echo "gemini_version=$GEMINI_VERSION" >> $GITHUB_OUTPUT
+          echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
       # Only runs on schedule; for other events, we skip and let decision step set should_build=true
       - name: Check for CLI updates
         id: check_versions
         if: github.event_name == 'schedule'
+        env:
+          CLAUDE_LATEST: ${{ steps.cli_versions.outputs.claude_version }}
+          GEMINI_LATEST: ${{ steps.cli_versions.outputs.gemini_version }}
         run: |
-          CLAUDE_LATEST=$(npm view @anthropic-ai/claude-code version)
-          GEMINI_LATEST=$(npm view @google/gemini-cli version)
-          echo "claude_version=$CLAUDE_LATEST" >> $GITHUB_OUTPUT
-          echo "gemini_version=$GEMINI_LATEST" >> $GITHUB_OUTPUT
           NEEDS_BUILD=false
           if [ -f .last_built_versions ]; then
             source .last_built_versions
@@ -101,15 +112,6 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value={{date 'YYYYMMDD'}},enable=${{ github.event_name == 'schedule' }}
 
-      - name: Get CLI versions
-        id: versions
-        run: |
-          CLAUDE_VERSION=$(npm view @anthropic-ai/claude-code version)
-          GEMINI_VERSION=$(npm view @google/gemini-cli version)
-          echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
-          echo "gemini_version=$GEMINI_VERSION" >> $GITHUB_OUTPUT
-          echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
-
       - name: Build and (conditionally) push image
         uses: docker/build-push-action@v5
         with:
@@ -122,9 +124,9 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
           build-args: |
-            CLAUDE_VERSION=${{ steps.versions.outputs.claude_version }}
-            GEMINI_VERSION=${{ steps.versions.outputs.gemini_version }}
-            BUILD_DATE=${{ steps.versions.outputs.build_date }}
+            CLAUDE_VERSION=${{ needs.check-updates.outputs.claude_version }}
+            GEMINI_VERSION=${{ needs.check-updates.outputs.gemini_version }}
+            BUILD_DATE=${{ needs.check-updates.outputs.build_date }}
 
       # Only on push to main; still inside DOCKER environment; safe to use secrets
       - name: Update Docker Hub description
@@ -139,9 +141,10 @@ jobs:
       # Only on scheduled builds; commits version file back to main
       - name: Save version info
         if: github.event_name == 'schedule' && success()
+        env:
+          CLAUDE_VERSION: ${{ needs.check-updates.outputs.claude_version }}
+          GEMINI_VERSION: ${{ needs.check-updates.outputs.gemini_version }}
         run: |
-          CLAUDE_VERSION=$(npm view @anthropic-ai/claude-code version)
-          GEMINI_VERSION=$(npm view @google/gemini-cli version)
           cat > .last_built_versions << EOF
           LAST_CLAUDE_VERSION=$CLAUDE_VERSION
           LAST_GEMINI_VERSION=$GEMINI_VERSION

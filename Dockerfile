@@ -2,36 +2,33 @@
 FROM node:20-slim AS base
 
 # Build arguments to force cache invalidation when CLI versions change
-ARG CLAUDE_VERSION=latest
-ARG GEMINI_VERSION=latest
+ARG CLAUDE_VERSION=1.0.113
+ARG GEMINI_VERSION=0.4.1
 ARG BUILD_DATE
+ARG DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies required for the AI CLIs, plotting stack, and Apptainer on HPCs
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     wget \
     vim \
     nano \
-    # Process monitoring tools for Claude
     procps \
-    # Python and scientific computing dependencies
     python3 \
     python3-pip \
     python3-venv \
     python3-dev \
-    # Libraries for plotting and visualization
     libfreetype6-dev \
     libpng-dev \
     libjpeg-dev \
     libopenblas-dev \
     liblapack-dev \
     gfortran \
-    # Additional dependencies for matplotlib
     libxft-dev \
     libfreetype6 \
     libfontconfig1 \
-    # Dependencies for Apptainer
     build-essential \
     libssl-dev \
     uuid-dev \
@@ -44,7 +41,6 @@ RUN apt-get update && apt-get install -y \
     fuse2fs \
     libfuse3-3 \
     uidmap \
-    # Clean up
     && rm -rf /var/lib/apt/lists/*
 
 # Set up Python environment
@@ -56,8 +52,8 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Python plotting and data science packages
-RUN pip install --upgrade pip && \
-    pip install \
+RUN python -m pip install --upgrade pip && \
+    python -m pip install --disable-pip-version-check \
     numpy \
     pandas \
     matplotlib \
@@ -101,7 +97,10 @@ RUN mkdir -p $NPM_CONFIG_PREFIX
 # Build args force cache invalidation when versions change
 RUN echo "Installing AI CLI tools: Claude Code ${CLAUDE_VERSION}, Gemini CLI ${GEMINI_VERSION}, and OpenAI Codex" && \
     npm cache clean --force && \
-    npm install -g @anthropic-ai/claude-code@latest @google/gemini-cli@latest @openai/codex@latest
+    npm install -g \
+        @anthropic-ai/claude-code@${CLAUDE_VERSION} \
+        @google/gemini-cli@${GEMINI_VERSION} \
+        @openai/codex@latest
 
 # Create workspace directory
 RUN mkdir -p /workspace
@@ -131,7 +130,6 @@ RUN echo '#!/bin/bash' > /usr/local/bin/container-info && \
 
 # Set environment for runtime
 ENV NODE_ENV=production
-ENV DEBIAN_FRONTEND=noninteractive
 
 # Labels
 LABEL maintainer="sahuno"
