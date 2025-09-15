@@ -1,166 +1,158 @@
 name: Build and Push Docker Image
 
 on:
-  # Build on push to main branch
   push:
     branches: [ main ]
-  # Build on pull requests
   pull_request:
     branches: [ main ]
-  # Check for CLI updates every 6 hours
   schedule:
-    - cron: '0 */6 * * *'
-  # Allow manual trigger
+    - cron: '0 */6 * * *'   # every 6 hours
   workflow_dispatch:
+
+# Prevent overlapping runs (e.g., two schedules colliding with a push)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.event_name }}
+  cancel-in-progress: true
 
 env:
   DOCKER_REGISTRY: docker.io
   DOCKER_IMAGE: sahuno/claude_gemini_container
 
+# Only what's needed. (We commit on schedule in the "Save version info" step.)
 permissions:
   contents: write
-  packages: write
 
 jobs:
   check-updates:
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.decision.outputs.should_build }}
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Check for CLI updates
-      id: check_versions
-      if: github.event_name == 'schedule'
-      run: |
-        # Get latest versions from npm
-        CLAUDE_LATEST=$(npm view @anthropic-ai/claude-code version)
-        GEMINI_LATEST=$(npm view @google/gemini-cli version)
-        
-        echo "Latest Claude Code: $CLAUDE_LATEST"
-        echo "Latest Gemini CLI: $GEMINI_LATEST"
-        
-        # Store versions for comparison
-        echo "claude_version=$CLAUDE_LATEST" >> $GITHUB_OUTPUT
-        echo "gemini_version=$GEMINI_LATEST" >> $GITHUB_OUTPUT
-        
-        # Check if we've built these versions before
-        NEEDS_BUILD=false
-        
-        if [ -f .last_built_versions ]; then
-          source .last_built_versions
-          if [ "$CLAUDE_LATEST" != "$LAST_CLAUDE_VERSION" ] || [ "$GEMINI_LATEST" != "$LAST_GEMINI_VERSION" ]; then
-            echo "New versions detected!"
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Only runs on schedule; for other events, we skip and let decision step set should_build=true
+      - name: Check for CLI updates
+        id: check_versions
+        if: github.event_name == 'schedule'
+        run: |
+          CLAUDE_LATEST=$(npm view @anthropic-ai/claude-code version)
+          GEMINI_LATEST=$(npm view @google/gemini-cli version)
+          echo "claude_version=$CLAUDE_LATEST" >> $GITHUB_OUTPUT
+          echo "gemini_version=$GEMINI_LATEST" >> $GITHUB_OUTPUT
+          NEEDS_BUILD=false
+          if [ -f .last_built_versions ]; then
+            source .last_built_versions
+            if [ "$CLAUDE_LATEST" != "$LAST_CLAUDE_VERSION" ] || [ "$GEMINI_LATEST" != "$LAST_GEMINI_VERSION" ]; then
+              NEEDS_BUILD=true
+            fi
+          else
             NEEDS_BUILD=true
           fi
-        else
-          echo "No previous build record"
-          NEEDS_BUILD=true
-        fi
-        
-        echo "needs_update=$NEEDS_BUILD" >> $GITHUB_OUTPUT
-    
-    - name: Decide whether to build
-      id: decision
-      run: |
-        # Build if: push/PR/manual OR (scheduled AND updates available)
-        if [[ "${{ github.event_name }}" != "schedule" ]] || [[ "${{ steps.check_versions.outputs.needs_update }}" == "true" ]]; then
-          echo "should_build=true" >> $GITHUB_OUTPUT
-          echo "Build triggered by: ${{ github.event_name }}"
-        else
-          echo "should_build=false" >> $GITHUB_OUTPUT
-          echo "Skipping build - no updates found"
-        fi
+          echo "needs_update=$NEEDS_BUILD" >> $GITHUB_OUTPUT
+
+      - name: Decide whether to build
+        id: decision
+        run: |
+          if [[ "${{ github.event_name }}" != "schedule" ]] || [[ "${{ steps.check_versions.outputs.needs_update }}" == "true" ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
 
   build:
     needs: check-updates
     if: needs.check-updates.outputs.should_build == 'true'
     runs-on: ubuntu-latest
-    
+
+    # Make environment-scoped secrets available to this job
+    environment:
+      name: DOCKER
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-    
-    - name: Log in to Docker Hub
-      if: github.event_name != 'pull_request'
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-    
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.DOCKER_IMAGE }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=schedule,pattern=nightly
-          type=raw,value=latest,enable={{is_default_branch}}
-          type=sha,prefix={{branch}}-
-          type=raw,value={{date 'YYYYMMDD'}},enable=${{ github.event_name == 'schedule' }}
-    
-    - name: Get CLI versions
-      id: versions
-      run: |
-        CLAUDE_VERSION=$(npm view @anthropic-ai/claude-code version)
-        GEMINI_VERSION=$(npm view @google/gemini-cli version)
-        echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
-        echo "gemini_version=$GEMINI_VERSION" >> $GITHUB_OUTPUT
-        echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
-    
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: ${{ github.event_name != 'pull_request' }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        platforms: linux/amd64,linux/arm64
-        build-args: |
-          CLAUDE_VERSION=${{ steps.versions.outputs.claude_version }}
-          GEMINI_VERSION=${{ steps.versions.outputs.gemini_version }}
-          BUILD_DATE=${{ steps.versions.outputs.build_date }}
-    
-    - name: Update Docker Hub description
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: peter-evans/dockerhub-description@v4
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-        repository: sahuno/claude_gemini_container
-        readme-filepath: ./README.md
-    
-    - name: Save version info
-      if: github.event_name == 'schedule' && success()
-      run: |
-        # Get the versions that were checked
-        CLAUDE_VERSION=$(npm view @anthropic-ai/claude-code version)
-        GEMINI_VERSION=$(npm view @google/gemini-cli version)
-        
-        # Create version file
-        cat > .last_built_versions << EOF
-        LAST_CLAUDE_VERSION=$CLAUDE_VERSION
-        LAST_GEMINI_VERSION=$GEMINI_VERSION
-        LAST_BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
-        EOF
-        
-        # Check if there are changes
-        if git diff --quiet .last_built_versions 2>/dev/null; then
-          echo "No version changes to commit"
-        else
-          # Commit and push
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add .last_built_versions
-          git commit -m "Update CLI versions - Claude: $CLAUDE_VERSION, Gemini: $GEMINI_VERSION"
-          git push origin HEAD:main
-        fi
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for multi-arch emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # SAFETY: never use secrets on pull_request runs (includes forks)
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}     # from Environment: DOCKER
+          password: ${{ secrets.DOCKERHUB_TOKEN }}     # from Environment: DOCKER
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=schedule,pattern=nightly
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix={{branch}}-
+            type=raw,value={{date 'YYYYMMDD'}},enable=${{ github.event_name == 'schedule' }}
+
+      - name: Get CLI versions
+        id: versions
+        run: |
+          CLAUDE_VERSION=$(npm view @anthropic-ai/claude-code version)
+          GEMINI_VERSION=$(npm view @google/gemini-cli version)
+          echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
+          echo "gemini_version=$GEMINI_VERSION" >> $GITHUB_OUTPUT
+          echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: Build and (conditionally) push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          # PRs build for validation but never push
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            CLAUDE_VERSION=${{ steps.versions.outputs.claude_version }}
+            GEMINI_VERSION=${{ steps.versions.outputs.gemini_version }}
+            BUILD_DATE=${{ steps.versions.outputs.build_date }}
+
+      # Only on push to main; still inside DOCKER environment; safe to use secrets
+      - name: Update Docker Hub description
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: sahuno/claude_gemini_container
+          readme-filepath: ./README.md
+
+      # Only on scheduled builds; commits version file back to main
+      - name: Save version info
+        if: github.event_name == 'schedule' && success()
+        run: |
+          CLAUDE_VERSION=$(npm view @anthropic-ai/claude-code version)
+          GEMINI_VERSION=$(npm view @google/gemini-cli version)
+          cat > .last_built_versions << EOF
+          LAST_CLAUDE_VERSION=$CLAUDE_VERSION
+          LAST_GEMINI_VERSION=$GEMINI_VERSION
+          LAST_BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          EOF
+          if git diff --quiet .last_built_versions 2>/dev/null; then
+            echo "No version changes to commit"
+          else
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git add .last_built_versions
+            git commit -m "Update CLI versions - Claude: $CLAUDE_VERSION, Gemini: $GEMINI_VERSION"
+            git push origin HEAD:main
+          fi
