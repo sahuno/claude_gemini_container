@@ -75,13 +75,16 @@ RUN ARCH=$(dpkg --print-architecture) && \
         echo "Download URL: https://github.com/apptainer/apptainer/releases/download/v${APPTAINER_VERSION}/apptainer_${APPTAINER_VERSION}_amd64.deb" && \
         wget --tries=3 --timeout=60 --progress=dot:giga \
             https://github.com/apptainer/apptainer/releases/download/v${APPTAINER_VERSION}/apptainer_${APPTAINER_VERSION}_amd64.deb \
+            -O /tmp/apptainer_${APPTAINER_VERSION}_amd64.deb \
             || (echo "wget failed, trying curl..." && \
-                curl -L --retry 3 --retry-delay 5 -o apptainer_${APPTAINER_VERSION}_amd64.deb \
+                curl -L --retry 3 --retry-delay 5 -o /tmp/apptainer_${APPTAINER_VERSION}_amd64.deb \
                 https://github.com/apptainer/apptainer/releases/download/v${APPTAINER_VERSION}/apptainer_${APPTAINER_VERSION}_amd64.deb) && \
         echo "Download complete. File size:" && \
-        ls -lh apptainer_${APPTAINER_VERSION}_amd64.deb && \
-        dpkg -i apptainer_${APPTAINER_VERSION}_amd64.deb && \
-        rm -f apptainer_${APPTAINER_VERSION}_amd64.deb && \
+        ls -lh /tmp/apptainer_${APPTAINER_VERSION}_amd64.deb && \
+        apt-get update && \
+        apt-get install -y --no-install-recommends /tmp/apptainer_${APPTAINER_VERSION}_amd64.deb && \
+        rm -f /tmp/apptainer_${APPTAINER_VERSION}_amd64.deb && \
+        rm -rf /var/lib/apt/lists/* && \
         echo "Apptainer installation completed successfully"; \
     else \
         echo "Skipping Apptainer installation for ${ARCH} architecture"; \
