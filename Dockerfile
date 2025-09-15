@@ -42,6 +42,7 @@ RUN apt-get update && apt-get install -y \
     cryptsetup \
     fuse \
     fuse2fs \
+    libfuse3-3 \
     uidmap \
     # Clean up
     && rm -rf /var/lib/apt/lists/*
