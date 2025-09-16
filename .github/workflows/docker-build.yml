@@ -29,19 +29,46 @@ jobs:
       should_build: ${{ steps.decision.outputs.should_build }}
       claude_version: ${{ steps.cli_versions.outputs.claude_version }}
       gemini_version: ${{ steps.cli_versions.outputs.gemini_version }}
+      snakemake_version: ${{ steps.cli_versions.outputs.snakemake_version }}
+      nf_core_version: ${{ steps.cli_versions.outputs.nf_core_version }}
+      nextflow_version: ${{ steps.cli_versions.outputs.nextflow_version }}
       build_date: ${{ steps.cli_versions.outputs.build_date }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Resolve CLI versions
+      - name: Resolve tool versions
         id: cli_versions
         run: |
           CLAUDE_VERSION=$(npm view @anthropic-ai/claude-code version)
           GEMINI_VERSION=$(npm view @google/gemini-cli version)
+          SNAKEMAKE_VERSION=$(python3 - <<'PY'
+import json, urllib.request
+with urllib.request.urlopen('https://pypi.org/pypi/snakemake/json', timeout=30) as resp:
+    data = json.load(resp)
+print(data['info']['version'])
+PY
+          )
+          NF_CORE_VERSION=$(python3 - <<'PY'
+import json, urllib.request
+with urllib.request.urlopen('https://pypi.org/pypi/nf-core/json', timeout=30) as resp:
+    data = json.load(resp)
+print(data['info']['version'])
+PY
+          )
+          NEXTFLOW_VERSION=$(curl -fsSL https://api.github.com/repos/nextflow-io/nextflow/releases/latest | python3 - <<'PY'
+import json, sys
+data = json.load(sys.stdin)
+print(data.get('tag_name') or data.get('name') or '')
+PY
+          )
+          NEXTFLOW_VERSION=${NEXTFLOW_VERSION#v}
           echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
           echo "gemini_version=$GEMINI_VERSION" >> $GITHUB_OUTPUT
+          echo "snakemake_version=$SNAKEMAKE_VERSION" >> $GITHUB_OUTPUT
+          echo "nf_core_version=$NF_CORE_VERSION" >> $GITHUB_OUTPUT
+          echo "nextflow_version=$NEXTFLOW_VERSION" >> $GITHUB_OUTPUT
           echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
 
       # Only runs on schedule; for other events, we skip and let decision step set should_build=true
@@ -51,11 +78,18 @@ jobs:
         env:
           CLAUDE_LATEST: ${{ steps.cli_versions.outputs.claude_version }}
           GEMINI_LATEST: ${{ steps.cli_versions.outputs.gemini_version }}
+          SNAKEMAKE_LATEST: ${{ steps.cli_versions.outputs.snakemake_version }}
+          NF_CORE_LATEST: ${{ steps.cli_versions.outputs.nf_core_version }}
+          NEXTFLOW_LATEST: ${{ steps.cli_versions.outputs.nextflow_version }}
         run: |
           NEEDS_BUILD=false
           if [ -f .last_built_versions ]; then
             source .last_built_versions
-            if [ "$CLAUDE_LATEST" != "$LAST_CLAUDE_VERSION" ] || [ "$GEMINI_LATEST" != "$LAST_GEMINI_VERSION" ]; then
+            if [ "$CLAUDE_LATEST" != "${LAST_CLAUDE_VERSION:-}" ] || \
+               [ "$GEMINI_LATEST" != "${LAST_GEMINI_VERSION:-}" ] || \
+               [ "$SNAKEMAKE_LATEST" != "${LAST_SNAKEMAKE_VERSION:-}" ] || \
+               [ "$NF_CORE_LATEST" != "${LAST_NF_CORE_VERSION:-}" ] || \
+               [ "$NEXTFLOW_LATEST" != "${LAST_NEXTFLOW_VERSION:-}" ]; then
               NEEDS_BUILD=true
             fi
           else
@@ -126,6 +160,9 @@ jobs:
           build-args: |
             CLAUDE_VERSION=${{ needs.check-updates.outputs.claude_version }}
             GEMINI_VERSION=${{ needs.check-updates.outputs.gemini_version }}
+            SNAKEMAKE_VERSION=${{ needs.check-updates.outputs.snakemake_version }}
+            NF_CORE_VERSION=${{ needs.check-updates.outputs.nf_core_version }}
+            NEXTFLOW_VERSION=${{ needs.check-updates.outputs.nextflow_version }}
             BUILD_DATE=${{ needs.check-updates.outputs.build_date }}
 
       # Only on push to main; still inside DOCKER environment; safe to use secrets
@@ -144,10 +181,16 @@ jobs:
         env:
           CLAUDE_VERSION: ${{ needs.check-updates.outputs.claude_version }}
           GEMINI_VERSION: ${{ needs.check-updates.outputs.gemini_version }}
+          SNAKEMAKE_VERSION: ${{ needs.check-updates.outputs.snakemake_version }}
+          NF_CORE_VERSION: ${{ needs.check-updates.outputs.nf_core_version }}
+          NEXTFLOW_VERSION: ${{ needs.check-updates.outputs.nextflow_version }}
         run: |
           cat > .last_built_versions << EOF
           LAST_CLAUDE_VERSION=$CLAUDE_VERSION
           LAST_GEMINI_VERSION=$GEMINI_VERSION
+          LAST_SNAKEMAKE_VERSION=$SNAKEMAKE_VERSION
+          LAST_NF_CORE_VERSION=$NF_CORE_VERSION
+          LAST_NEXTFLOW_VERSION=$NEXTFLOW_VERSION
           LAST_BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
           EOF
           if git diff --quiet .last_built_versions 2>/dev/null; then

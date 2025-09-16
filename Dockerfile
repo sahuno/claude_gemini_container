@@ -5,6 +5,9 @@ FROM node:20-slim AS base
 ARG CLAUDE_VERSION=1.0.113
 ARG GEMINI_VERSION=0.4.1
 ARG BUILD_DATE
+ARG SNAKEMAKE_VERSION=9.11.2
+ARG NF_CORE_VERSION=3.0.0
+ARG NEXTFLOW_VERSION=24.10.3
 ARG DEBIAN_FRONTEND=noninteractive
 ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
 
@@ -41,6 +44,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fuse2fs \
     libfuse3-3 \
     uidmap \
+    # Java 17 for Nextflow (required as of v24.11.0)
+    openjdk-17-jre-headless \
+    # Additional deps for Snakemake
+    rsync \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up Python environment
@@ -51,7 +58,7 @@ ENV PIP_NO_CACHE_DIR=1
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install Python plotting and data science packages
+# Install Python plotting, data science, and bioinformatics workflow packages
 RUN python -m pip install --upgrade pip && \
     python -m pip install --disable-pip-version-check \
     numpy \
@@ -63,7 +70,9 @@ RUN python -m pip install --upgrade pip && \
     scikit-learn \
     jupyter \
     ipython \
-    markitdown
+    markitdown \
+    snakemake==${SNAKEMAKE_VERSION} \
+    nf-core==${NF_CORE_VERSION}
 
 # Install Apptainer (formerly Singularity) - only for AMD64
 # Note: Apptainer is primarily needed on HPC systems, not for local development
@@ -90,6 +99,16 @@ RUN ARCH=$(dpkg --print-architecture) && \
         echo "Skipping Apptainer installation for ${ARCH} architecture"; \
         echo "Apptainer is primarily needed for HPC environments, not local Docker containers"; \
     fi
+
+# Install Nextflow (requires Java 17+)
+# Pin to the requested release from GitHub
+RUN mkdir -p /opt/nextflow && \
+    cd /opt/nextflow && \
+    curl -fsSL "https://github.com/nextflow-io/nextflow/releases/download/v${NEXTFLOW_VERSION}/nextflow-${NEXTFLOW_VERSION}-all" -o nextflow && \
+    chmod +x nextflow && \
+    ln -s /opt/nextflow/nextflow /usr/local/bin/nextflow && \
+    nextflow info && \
+    echo "Nextflow installation completed"
 
 # Set up npm global directory
 ENV NPM_CONFIG_PREFIX=/opt/npm-global
@@ -118,11 +137,17 @@ RUN echo '#!/bin/bash' > /usr/local/bin/container-info && \
     echo 'echo "  - codex: OpenAI Codex CLI"' >> /usr/local/bin/container-info && \
     echo 'echo "  - python3: Python with data science libraries"' >> /usr/local/bin/container-info && \
     echo 'echo "  - jupyter: Jupyter notebook"' >> /usr/local/bin/container-info && \
+    echo 'echo ""' >> /usr/local/bin/container-info && \
+    echo 'echo "Bioinformatics Workflow Tools:"' >> /usr/local/bin/container-info && \
+    echo "echo \"  - snakemake: Workflow management (v${SNAKEMAKE_VERSION})\"" >> /usr/local/bin/container-info && \
+    echo "echo \"  - nextflow: Data-driven computational pipelines (v${NEXTFLOW_VERSION})\"" >> /usr/local/bin/container-info && \
+    echo "echo \"  - nf-core: Community curated pipelines (v${NF_CORE_VERSION})\"" >> /usr/local/bin/container-info && \
     echo 'if command -v apptainer >/dev/null 2>&1; then echo "  - apptainer: Container runtime (v1.3.5)"; fi' >> /usr/local/bin/container-info && \
     echo 'echo ""' >> /usr/local/bin/container-info && \
     echo 'echo "Python packages installed:"' >> /usr/local/bin/container-info && \
     echo 'echo "  numpy, pandas, matplotlib, seaborn, plotly,"' >> /usr/local/bin/container-info && \
-    echo 'echo "  scipy, scikit-learn, jupyter, ipython, markitdown"' >> /usr/local/bin/container-info && \
+    echo 'echo "  scipy, scikit-learn, jupyter, ipython, markitdown,"' >> /usr/local/bin/container-info && \
+    echo 'echo "  snakemake, nf-core"' >> /usr/local/bin/container-info && \
     echo 'echo ""' >> /usr/local/bin/container-info && \
     echo 'echo "Set environment variables:"' >> /usr/local/bin/container-info && \
     echo 'echo "  export ANTHROPIC_API_KEY=your_key_here"' >> /usr/local/bin/container-info && \
@@ -136,10 +161,13 @@ ENV NODE_ENV=production
 
 # Labels
 LABEL maintainer="sahuno"
-LABEL description="AI CLI tools container with Claude, Gemini, Codex, and Python capabilities"
+LABEL description="AI CLI and Bioinformatics workflow container with Claude, Gemini, Codex, Python data science stack, Snakemake, Nextflow, and nf-core"
 LABEL version="1.0"
 LABEL claude.version="${CLAUDE_VERSION}"
 LABEL gemini.version="${GEMINI_VERSION}"
+LABEL snakemake.version="${SNAKEMAKE_VERSION}"
+LABEL nf-core.version="${NF_CORE_VERSION}"
+LABEL nextflow.version="${NEXTFLOW_VERSION}"
 LABEL build.date="${BUILD_DATE}"
 
 # Default command
