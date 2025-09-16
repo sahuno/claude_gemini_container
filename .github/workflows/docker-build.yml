@@ -43,26 +43,9 @@ jobs:
         run: |
           CLAUDE_VERSION=$(npm view @anthropic-ai/claude-code version)
           GEMINI_VERSION=$(npm view @google/gemini-cli version)
-          SNAKEMAKE_VERSION=$(python3 - <<'PY'
-import json, urllib.request
-with urllib.request.urlopen('https://pypi.org/pypi/snakemake/json', timeout=30) as resp:
-    data = json.load(resp)
-print(data['info']['version'])
-PY
-          )
-          NF_CORE_VERSION=$(python3 - <<'PY'
-import json, urllib.request
-with urllib.request.urlopen('https://pypi.org/pypi/nf-core/json', timeout=30) as resp:
-    data = json.load(resp)
-print(data['info']['version'])
-PY
-          )
-          NEXTFLOW_VERSION=$(curl -fsSL https://api.github.com/repos/nextflow-io/nextflow/releases/latest | python3 - <<'PY'
-import json, sys
-data = json.load(sys.stdin)
-print(data.get('tag_name') or data.get('name') or '')
-PY
-          )
+          SNAKEMAKE_VERSION=$(python3 -c "import json, urllib.request; data = json.load(urllib.request.urlopen('https://pypi.org/pypi/snakemake/json', timeout=30)); print(data['info']['version'])")
+          NF_CORE_VERSION=$(python3 -c "import json, urllib.request; data = json.load(urllib.request.urlopen('https://pypi.org/pypi/nf-core/json', timeout=30)); print(data['info']['version'])")
+          NEXTFLOW_VERSION=$(curl -fsSL https://api.github.com/repos/nextflow-io/nextflow/releases/latest | python3 -c "import json, sys; data = json.load(sys.stdin); print(data.get('tag_name') or data.get('name') or '')")
           NEXTFLOW_VERSION=${NEXTFLOW_VERSION#v}
           echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
           echo "gemini_version=$GEMINI_VERSION" >> $GITHUB_OUTPUT
