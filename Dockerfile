@@ -7,7 +7,6 @@ ARG GEMINI_VERSION=0.4.1
 ARG BUILD_DATE
 ARG SNAKEMAKE_VERSION=9.11.2
 ARG NF_CORE_VERSION=3.0.0
-ARG NEXTFLOW_VERSION=24.10.3
 ARG DEBIAN_FRONTEND=noninteractive
 ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
 
@@ -101,10 +100,10 @@ RUN ARCH=$(dpkg --print-architecture) && \
     fi
 
 # Install Nextflow (requires Java 17+)
-# Pin to the requested release from GitHub
+# Using the official self-installing package (recommended method)
 RUN mkdir -p /opt/nextflow && \
     cd /opt/nextflow && \
-    curl -fsSL "https://github.com/nextflow-io/nextflow/releases/download/v${NEXTFLOW_VERSION}/nextflow-${NEXTFLOW_VERSION}-all" -o nextflow && \
+    curl -s https://get.nextflow.io | bash && \
     chmod +x nextflow && \
     ln -s /opt/nextflow/nextflow /usr/local/bin/nextflow && \
     nextflow info && \
