@@ -2,11 +2,11 @@
 FROM node:20-slim AS base
 
 # Build arguments to force cache invalidation when CLI versions change
-ARG CLAUDE_VERSION=1.0.113
-ARG GEMINI_VERSION=0.4.1
+ARG CLAUDE_VERSION=2.1.12
+ARG GEMINI_VERSION=0.24.0
 ARG BUILD_DATE
-ARG SNAKEMAKE_VERSION=9.11.2
-ARG NF_CORE_VERSION=3.0.0
+ARG SNAKEMAKE_VERSION=9.15.0
+ARG NF_CORE_VERSION=3.5.1
 ARG DEBIAN_FRONTEND=noninteractive
 ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
 
@@ -78,7 +78,7 @@ RUN python -m pip install --upgrade pip && \
 # ARM64 builds (e.g., Mac M1/M2) skip Apptainer installation
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "${ARCH}" = "amd64" ]; then \
-        export APPTAINER_VERSION=1.3.5 && \
+        export APPTAINER_VERSION=1.4.0 && \
         echo "Installing Apptainer ${APPTAINER_VERSION} for amd64..." && \
         echo "Download URL: https://github.com/apptainer/apptainer/releases/download/v${APPTAINER_VERSION}/apptainer_${APPTAINER_VERSION}_amd64.deb" && \
         wget --tries=3 --timeout=60 --progress=dot:giga \
@@ -139,9 +139,9 @@ RUN echo '#!/bin/bash' > /usr/local/bin/container-info && \
     echo 'echo ""' >> /usr/local/bin/container-info && \
     echo 'echo "Bioinformatics Workflow Tools:"' >> /usr/local/bin/container-info && \
     echo "echo \"  - snakemake: Workflow management (v${SNAKEMAKE_VERSION})\"" >> /usr/local/bin/container-info && \
-    echo "echo \"  - nextflow: Data-driven computational pipelines (v${NEXTFLOW_VERSION})\"" >> /usr/local/bin/container-info && \
+    echo 'echo "  - nextflow: Data-driven computational pipelines (latest)"' >> /usr/local/bin/container-info && \
     echo "echo \"  - nf-core: Community curated pipelines (v${NF_CORE_VERSION})\"" >> /usr/local/bin/container-info && \
-    echo 'if command -v apptainer >/dev/null 2>&1; then echo "  - apptainer: Container runtime (v1.3.5)"; fi' >> /usr/local/bin/container-info && \
+    echo 'if command -v apptainer >/dev/null 2>&1; then echo "  - apptainer: Container runtime (v1.4.0)"; fi' >> /usr/local/bin/container-info && \
     echo 'echo ""' >> /usr/local/bin/container-info && \
     echo 'echo "Python packages installed:"' >> /usr/local/bin/container-info && \
     echo 'echo "  numpy, pandas, matplotlib, seaborn, plotly,"' >> /usr/local/bin/container-info && \
@@ -166,7 +166,7 @@ LABEL claude.version="${CLAUDE_VERSION}"
 LABEL gemini.version="${GEMINI_VERSION}"
 LABEL snakemake.version="${SNAKEMAKE_VERSION}"
 LABEL nf-core.version="${NF_CORE_VERSION}"
-LABEL nextflow.version="${NEXTFLOW_VERSION}"
+LABEL nextflow.version="latest"
 LABEL build.date="${BUILD_DATE}"
 
 # Default command
