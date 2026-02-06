@@ -2,8 +2,9 @@
 FROM node:20-slim AS base
 
 # Build arguments to force cache invalidation when CLI versions change
-ARG CLAUDE_VERSION=2.1.12
-ARG GEMINI_VERSION=0.24.0
+ARG CLAUDE_VERSION=2.1.34
+ARG GEMINI_VERSION=0.27.2
+ARG CODEX_VERSION=0.98.0
 ARG BUILD_DATE
 ARG SNAKEMAKE_VERSION=9.15.0
 ARG NF_CORE_VERSION=3.5.1
@@ -116,12 +117,13 @@ RUN mkdir -p $NPM_CONFIG_PREFIX
 
 # Install Claude Code, Gemini CLI, and OpenAI Codex CLI
 # Build args force cache invalidation when versions change
-RUN echo "Installing AI CLI tools: Claude Code ${CLAUDE_VERSION}, Gemini CLI ${GEMINI_VERSION}, and OpenAI Codex" && \
+# Note: npm installation is the official method for Docker containers
+RUN echo "Installing AI CLI tools: Claude Code ${CLAUDE_VERSION}, Gemini CLI ${GEMINI_VERSION}, and OpenAI Codex ${CODEX_VERSION}" && \
     npm cache clean --force && \
     npm install -g \
         @anthropic-ai/claude-code@${CLAUDE_VERSION} \
         @google/gemini-cli@${GEMINI_VERSION} \
-        @openai/codex@latest
+        @openai/codex@${CODEX_VERSION}
 
 # Create workspace directory
 RUN mkdir -p /workspace
@@ -130,10 +132,10 @@ WORKDIR /workspace
 # Create container info script
 RUN echo '#!/bin/bash' > /usr/local/bin/container-info && \
     echo 'echo "=== AI CLI Container with Python ===="' >> /usr/local/bin/container-info && \
-    echo 'echo "Available tools:"' >> /usr/local/bin/container-info && \
-    echo 'echo "  - claude: Claude Code CLI"' >> /usr/local/bin/container-info && \
-    echo 'echo "  - gemini: Gemini CLI"' >> /usr/local/bin/container-info && \
-    echo 'echo "  - codex: OpenAI Codex CLI"' >> /usr/local/bin/container-info && \
+    echo 'echo "Available AI CLI Tools:"' >> /usr/local/bin/container-info && \
+    echo "echo \"  - claude: Claude Code CLI (v${CLAUDE_VERSION})\"" >> /usr/local/bin/container-info && \
+    echo "echo \"  - gemini: Gemini CLI (v${GEMINI_VERSION})\"" >> /usr/local/bin/container-info && \
+    echo "echo \"  - codex: OpenAI Codex CLI (v${CODEX_VERSION})\"" >> /usr/local/bin/container-info && \
     echo 'echo "  - python3: Python with data science libraries"' >> /usr/local/bin/container-info && \
     echo 'echo "  - jupyter: Jupyter notebook"' >> /usr/local/bin/container-info && \
     echo 'echo ""' >> /usr/local/bin/container-info && \
@@ -164,6 +166,7 @@ LABEL description="AI CLI and Bioinformatics workflow container with Claude, Gem
 LABEL version="1.0"
 LABEL claude.version="${CLAUDE_VERSION}"
 LABEL gemini.version="${GEMINI_VERSION}"
+LABEL codex.version="${CODEX_VERSION}"
 LABEL snakemake.version="${SNAKEMAKE_VERSION}"
 LABEL nf-core.version="${NF_CORE_VERSION}"
 LABEL nextflow.version="latest"
