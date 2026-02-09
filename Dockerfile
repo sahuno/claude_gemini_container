@@ -50,6 +50,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rsync \
     && rm -rf /var/lib/apt/lists/*
 
+# Install GitHub CLI
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set up Python environment
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
@@ -154,6 +162,11 @@ RUN echo '#!/bin/bash' > /usr/local/bin/container-info && \
     echo 'echo "  export ANTHROPIC_API_KEY=your_key_here"' >> /usr/local/bin/container-info && \
     echo 'echo "  export GEMINI_API_KEY=your_key_here"' >> /usr/local/bin/container-info && \
     echo 'echo "  export OPENAI_API_KEY=your_key_here (for Codex)"' >> /usr/local/bin/container-info && \
+    echo 'echo ""' >> /usr/local/bin/container-info && \
+    echo 'echo "Development Tools:"' >> /usr/local/bin/container-info && \
+    echo 'echo "  - gh: GitHub CLI"' >> /usr/local/bin/container-info && \
+    echo 'echo "  - git: Version control"' >> /usr/local/bin/container-info && \
+    echo 'echo "  - vim, nano: Text editors"' >> /usr/local/bin/container-info && \
     echo 'echo "=============================================="' >> /usr/local/bin/container-info && \
     chmod +x /usr/local/bin/container-info
 

@@ -26,7 +26,7 @@ The Docker image includes:
 - **Container Runtime**: Apptainer (AMD64 only, for HPC compatibility)
 - **Python 3**: Data science libraries (numpy, pandas, matplotlib, seaborn, plotly, scipy, scikit-learn)
 - **Interactive Computing**: Jupyter notebook, IPython
-- **Development Tools**: git, vim, nano, curl, wget
+- **Development Tools**: GitHub CLI (gh), git, vim, nano, curl, wget
 
 #### Pull from Docker Hub
 ```bash
@@ -167,7 +167,9 @@ Add these secrets to your GitHub repository:
 - **java**: OpenJDK 17 for Nextflow
 
 ### Development Tools
-- **git, vim, nano**: Version control and text editors
+- **gh**: GitHub CLI for working with repositories, PRs, and issues
+- **git**: Version control system
+- **vim, nano**: Text editors
 - **curl, wget**: Data download utilities
 - **rsync**: File synchronization
 
@@ -209,6 +211,32 @@ docker run --rm -v $(pwd):/workspace \
   nf-core list
 ```
 
+## Using GitHub CLI (gh)
+
+The container includes the GitHub CLI for working with repositories, PRs, and issues:
+
+```bash
+# Authenticate with GitHub
+docker run -it --rm -v $(pwd):/workspace \
+  sahuno/claude_gemini_container:latest \
+  gh auth login
+
+# View PR information
+docker run --rm -v $(pwd):/workspace \
+  sahuno/claude_gemini_container:latest \
+  gh pr view 123
+
+# Create a PR
+docker run --rm -v $(pwd):/workspace \
+  sahuno/claude_gemini_container:latest \
+  gh pr create --title "My PR" --body "Description"
+
+# List issues
+docker run --rm -v $(pwd):/workspace \
+  sahuno/claude_gemini_container:latest \
+  gh issue list
+```
+
 ## Container Information
 
 To view all installed tools and versions, run:
@@ -220,4 +248,5 @@ This displays:
 - All AI CLI tools with versions
 - Bioinformatics workflow tools with versions
 - Python packages installed
+- Development tools (gh, git, etc.)
 - Required environment variables
