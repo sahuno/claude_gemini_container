@@ -58,6 +58,14 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Git LFS
+RUN curl -fsSL https://packagecloud.io/github/git-lfs/gpgkey | gpg --dearmor -o /usr/share/keyrings/git-lfs-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/git-lfs-archive-keyring.gpg] https://packagecloud.io/github/git-lfs/debian/ bullseye main" | tee /etc/apt/sources.list.d/git-lfs.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y git-lfs \
+    && git lfs install \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set up Python environment
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
@@ -166,6 +174,7 @@ RUN echo '#!/bin/bash' > /usr/local/bin/container-info && \
     echo 'echo "Development Tools:"' >> /usr/local/bin/container-info && \
     echo 'echo "  - gh: GitHub CLI"' >> /usr/local/bin/container-info && \
     echo 'echo "  - git: Version control"' >> /usr/local/bin/container-info && \
+    echo 'echo "  - git-lfs: Git Large File Storage"' >> /usr/local/bin/container-info && \
     echo 'echo "  - vim, nano: Text editors"' >> /usr/local/bin/container-info && \
     echo 'echo "=============================================="' >> /usr/local/bin/container-info && \
     chmod +x /usr/local/bin/container-info

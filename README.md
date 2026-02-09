@@ -26,7 +26,7 @@ The Docker image includes:
 - **Container Runtime**: Apptainer (AMD64 only, for HPC compatibility)
 - **Python 3**: Data science libraries (numpy, pandas, matplotlib, seaborn, plotly, scipy, scikit-learn)
 - **Interactive Computing**: Jupyter notebook, IPython
-- **Development Tools**: GitHub CLI (gh), git, vim, nano, curl, wget
+- **Development Tools**: GitHub CLI (gh), git, git-lfs, vim, nano, curl, wget
 
 #### Pull from Docker Hub
 ```bash
@@ -169,6 +169,7 @@ Add these secrets to your GitHub repository:
 ### Development Tools
 - **gh**: GitHub CLI for working with repositories, PRs, and issues
 - **git**: Version control system
+- **git-lfs**: Git Large File Storage for managing large files
 - **vim, nano**: Text editors
 - **curl, wget**: Data download utilities
 - **rsync**: File synchronization
@@ -235,6 +236,32 @@ docker run --rm -v $(pwd):/workspace \
 docker run --rm -v $(pwd):/workspace \
   sahuno/claude_gemini_container:latest \
   gh issue list
+```
+
+## Using Git LFS
+
+The container includes Git Large File Storage (LFS) for managing large files in repositories:
+
+```bash
+# Track large files (e.g., *.fastq.gz, *.bam)
+docker run --rm -v $(pwd):/workspace \
+  sahuno/claude_gemini_container:latest \
+  git lfs track "*.fastq.gz"
+
+# List tracked file patterns
+docker run --rm -v $(pwd):/workspace \
+  sahuno/claude_gemini_container:latest \
+  git lfs track
+
+# Pull LFS files
+docker run --rm -v $(pwd):/workspace \
+  sahuno/claude_gemini_container:latest \
+  git lfs pull
+
+# Check LFS status
+docker run --rm -v $(pwd):/workspace \
+  sahuno/claude_gemini_container:latest \
+  git lfs status
 ```
 
 ## Container Information
