@@ -88,6 +88,7 @@ RUN python -m pip install --upgrade pip && \
     ipython \
     markitdown \
     snakemake==${SNAKEMAKE_VERSION} \
+    snakemake-executor-plugin-slurm \
     nf-core==${NF_CORE_VERSION}
 
 # Install Apptainer (formerly Singularity) - only for AMD64
@@ -156,7 +157,7 @@ RUN echo '#!/bin/bash' > /usr/local/bin/container-info && \
     echo 'echo "  - jupyter: Jupyter notebook"' >> /usr/local/bin/container-info && \
     echo 'echo ""' >> /usr/local/bin/container-info && \
     echo 'echo "Bioinformatics Workflow Tools:"' >> /usr/local/bin/container-info && \
-    echo "echo \"  - snakemake: Workflow management (v${SNAKEMAKE_VERSION})\"" >> /usr/local/bin/container-info && \
+    echo "echo \"  - snakemake: Workflow management (v${SNAKEMAKE_VERSION}) with SLURM executor\"" >> /usr/local/bin/container-info && \
     echo 'echo "  - nextflow: Data-driven computational pipelines (latest)"' >> /usr/local/bin/container-info && \
     echo "echo \"  - nf-core: Community curated pipelines (v${NF_CORE_VERSION})\"" >> /usr/local/bin/container-info && \
     echo 'if command -v apptainer >/dev/null 2>&1; then echo "  - apptainer: Container runtime (v1.4.0)"; fi' >> /usr/local/bin/container-info && \

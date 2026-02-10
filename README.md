@@ -156,7 +156,7 @@ Add these secrets to your GitHub repository:
 - **codex** (v0.98.0): OpenAI Codex CLI - Lightweight coding agent
 
 ### Bioinformatics Workflow Management
-- **snakemake** (v9.15.0): Python-based workflow management system
+- **snakemake** (v9.15.0): Python-based workflow management system with SLURM executor plugin
 - **nextflow** (latest): Data-driven computational pipelines with Java 17 support
 - **nf-core** (v3.5.1): Community curated bioinformatics pipelines
 
@@ -181,17 +181,21 @@ The container includes these pre-installed Python packages:
 - **Visualization**: matplotlib, seaborn, plotly
 - **Scientific Computing & ML**: scipy, scikit-learn
 - **Interactive Computing**: jupyter, ipython
-- **Workflow Management**: snakemake (v9.15.0), nf-core (v3.5.1)
+- **Workflow Management**: snakemake (v9.15.0) with SLURM executor plugin, nf-core (v3.5.1)
 - **Document Conversion**: markitdown
 
 ## Using Bioinformatics Workflows
 
 ### Snakemake
 ```bash
-# Run a Snakemake workflow
+# Run a Snakemake workflow locally
 docker run --rm -v $(pwd):/workspace \
   sahuno/claude_gemini_container:latest \
   snakemake --cores 4 --configfile config.yaml
+
+# Run with SLURM executor (on HPC)
+singularity exec claude.sif \
+  snakemake --executor slurm --jobs 100 --default-resources slurm_account=myaccount
 
 # Dry run to check workflow
 docker run --rm -v $(pwd):/workspace \
