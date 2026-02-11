@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [ main ]
   schedule:
-    - cron: '0 12 * * *'   # daily at 12:00 PM UTC (6 AM CST)
+    - cron: '0 17 * * *'   # daily at 12:00 PM EST (5:00 PM UTC)
   workflow_dispatch:
 
 # Prevent overlapping runs (e.g., two schedules colliding with a push)
