@@ -48,6 +48,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openjdk-17-jre-headless \
     # Additional deps for Snakemake
     rsync \
+    # Utilities needed for Claude Code hooks and general usability
+    jq \
+    man-db \
+    less \
+    tree \
+    file \
+    bc \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI
