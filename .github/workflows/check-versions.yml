@@ -1,0 +1,196 @@
+name: Check for Tool Version Updates
+
+# Runs daily, detects version bumps in any AI CLI or bioinformatics tool,
+# and opens a PR to update the Dockerfile + README. The actual Docker
+# build/push only happens when that PR is merged to main (docker-build.yml).
+
+on:
+  schedule:
+    - cron: '0 17 * * *'   # 12:00 PM EST / 17:00 UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: check-versions
+  cancel-in-progress: true
+
+permissions:
+  contents: write       # push the auto-update branch
+  pull-requests: write  # open the PR
+
+jobs:
+  check-and-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Fetch latest published versions ────────────────────────────────
+      - name: Fetch latest tool versions
+        id: latest
+        run: |
+          CLAUDE=$(npm view @anthropic-ai/claude-code version)
+          GEMINI=$(npm view @google/gemini-cli version)
+          CODEX=$(npm view @openai/codex version)
+          SNAKEMAKE=$(python3 -c "
+          import json, urllib.request
+          data = json.load(urllib.request.urlopen('https://pypi.org/pypi/snakemake/json', timeout=30))
+          print(data['info']['version'])
+          ")
+          NF_CORE=$(python3 -c "
+          import json, urllib.request
+          data = json.load(urllib.request.urlopen('https://pypi.org/pypi/nf-core/json', timeout=30))
+          print(data['info']['version'])
+          ")
+          echo "claude=$CLAUDE"       >> $GITHUB_OUTPUT
+          echo "gemini=$GEMINI"       >> $GITHUB_OUTPUT
+          echo "codex=$CODEX"         >> $GITHUB_OUTPUT
+          echo "snakemake=$SNAKEMAKE" >> $GITHUB_OUTPUT
+          echo "nf_core=$NF_CORE"     >> $GITHUB_OUTPUT
+          echo "Latest: Claude=$CLAUDE | Gemini=$GEMINI | Codex=$CODEX | Snakemake=$SNAKEMAKE | nf-core=$NF_CORE"
+
+      # ── Read versions currently pinned in the Dockerfile ───────────────
+      # Dockerfile ARG defaults are the single source of truth.
+      - name: Read current versions from Dockerfile
+        id: current
+        run: |
+          echo "claude=$(grep '^ARG CLAUDE_VERSION='       Dockerfile | cut -d= -f2)" >> $GITHUB_OUTPUT
+          echo "gemini=$(grep '^ARG GEMINI_VERSION='       Dockerfile | cut -d= -f2)" >> $GITHUB_OUTPUT
+          echo "codex=$(grep '^ARG CODEX_VERSION='         Dockerfile | cut -d= -f2)" >> $GITHUB_OUTPUT
+          echo "snakemake=$(grep '^ARG SNAKEMAKE_VERSION=' Dockerfile | cut -d= -f2)" >> $GITHUB_OUTPUT
+          echo "nf_core=$(grep '^ARG NF_CORE_VERSION='     Dockerfile | cut -d= -f2)" >> $GITHUB_OUTPUT
+
+      # ── Determine whether anything changed ─────────────────────────────
+      - name: Detect version changes
+        id: changes
+        env:
+          NEW_CLAUDE:    ${{ steps.latest.outputs.claude }}
+          NEW_GEMINI:    ${{ steps.latest.outputs.gemini }}
+          NEW_CODEX:     ${{ steps.latest.outputs.codex }}
+          NEW_SNAKEMAKE: ${{ steps.latest.outputs.snakemake }}
+          NEW_NF_CORE:   ${{ steps.latest.outputs.nf_core }}
+          CUR_CLAUDE:    ${{ steps.current.outputs.claude }}
+          CUR_GEMINI:    ${{ steps.current.outputs.gemini }}
+          CUR_CODEX:     ${{ steps.current.outputs.codex }}
+          CUR_SNAKEMAKE: ${{ steps.current.outputs.snakemake }}
+          CUR_NF_CORE:   ${{ steps.current.outputs.nf_core }}
+        run: |
+          CHANGED=false
+          [ "$NEW_CLAUDE"    != "$CUR_CLAUDE"    ] && CHANGED=true && echo "  Claude Code:  $CUR_CLAUDE -> $NEW_CLAUDE"
+          [ "$NEW_GEMINI"    != "$CUR_GEMINI"    ] && CHANGED=true && echo "  Gemini CLI:   $CUR_GEMINI -> $NEW_GEMINI"
+          [ "$NEW_CODEX"     != "$CUR_CODEX"     ] && CHANGED=true && echo "  OpenAI Codex: $CUR_CODEX -> $NEW_CODEX"
+          [ "$NEW_SNAKEMAKE" != "$CUR_SNAKEMAKE" ] && CHANGED=true && echo "  Snakemake:    $CUR_SNAKEMAKE -> $NEW_SNAKEMAKE"
+          [ "$NEW_NF_CORE"   != "$CUR_NF_CORE"   ] && CHANGED=true && echo "  nf-core:      $CUR_NF_CORE -> $NEW_NF_CORE"
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+          [ "$CHANGED" = "false" ] && echo "No version changes detected — skipping PR creation." || true
+
+      # ── Guard: skip if an auto-update PR is already open ───────────────
+      - name: Check for existing auto-update PR
+        if: steps.changes.outputs.changed == 'true'
+        id: existing_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COUNT=$(gh pr list --state open --label "auto-update" --json number --jq 'length')
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
+          [ "$COUNT" -gt 0 ] && echo "Open auto-update PR already exists — skipping." || true
+
+      # ── Update Dockerfile ARGs and README version table ─────────────────
+      - name: Update Dockerfile and README
+        if: steps.changes.outputs.changed == 'true' && steps.existing_pr.outputs.count == '0'
+        env:
+          CLAUDE_VERSION:    ${{ steps.latest.outputs.claude }}
+          GEMINI_VERSION:    ${{ steps.latest.outputs.gemini }}
+          CODEX_VERSION:     ${{ steps.latest.outputs.codex }}
+          SNAKEMAKE_VERSION: ${{ steps.latest.outputs.snakemake }}
+          NF_CORE_VERSION:   ${{ steps.latest.outputs.nf_core }}
+        run: |
+          sed -i "s/^ARG CLAUDE_VERSION=.*/ARG CLAUDE_VERSION=${CLAUDE_VERSION}/"          Dockerfile
+          sed -i "s/^ARG GEMINI_VERSION=.*/ARG GEMINI_VERSION=${GEMINI_VERSION}/"          Dockerfile
+          sed -i "s/^ARG CODEX_VERSION=.*/ARG CODEX_VERSION=${CODEX_VERSION}/"             Dockerfile
+          sed -i "s/^ARG SNAKEMAKE_VERSION=.*/ARG SNAKEMAKE_VERSION=${SNAKEMAKE_VERSION}/" Dockerfile
+          sed -i "s/^ARG NF_CORE_VERSION=.*/ARG NF_CORE_VERSION=${NF_CORE_VERSION}/"       Dockerfile
+
+          # Update README version table and date header using Python
+          # (avoids sed delimiter conflicts with pipe characters in MD tables)
+          python3 - <<'PYEOF'
+          import re, os
+          from datetime import datetime
+
+          versions = {
+              'Claude Code':  os.environ['CLAUDE_VERSION'],
+              'Gemini CLI':   os.environ['GEMINI_VERSION'],
+              'OpenAI Codex': os.environ['CODEX_VERSION'],
+              'Snakemake':    os.environ['SNAKEMAKE_VERSION'],
+              'nf-core':      os.environ['NF_CORE_VERSION'],
+          }
+
+          with open('README.md') as f:
+              content = f.read()
+
+          for tool, ver in versions.items():
+              content = re.sub(
+                  rf'(\| \*\*{re.escape(tool)}\*\* \| )[^\|]+(\|)',
+                  rf'\g<1>{ver} \g<2>',
+                  content
+              )
+
+          month_year = datetime.utcnow().strftime('%B %Y')
+          content = re.sub(
+              r'## Current Versions \(Updated: [^)]+\)',
+              f'## Current Versions (Updated: {month_year})',
+              content
+          )
+
+          with open('README.md', 'w') as f:
+              f.write(content)
+          print("README.md updated")
+          PYEOF
+
+      # ── Create branch, commit, and open PR ─────────────────────────────
+      - name: Open pull request
+        if: steps.changes.outputs.changed == 'true' && steps.existing_pr.outputs.count == '0'
+        env:
+          CLAUDE_VERSION:    ${{ steps.latest.outputs.claude }}
+          GEMINI_VERSION:    ${{ steps.latest.outputs.gemini }}
+          CODEX_VERSION:     ${{ steps.latest.outputs.codex }}
+          SNAKEMAKE_VERSION: ${{ steps.latest.outputs.snakemake }}
+          NF_CORE_VERSION:   ${{ steps.latest.outputs.nf_core }}
+          CUR_CLAUDE:        ${{ steps.current.outputs.claude }}
+          CUR_GEMINI:        ${{ steps.current.outputs.gemini }}
+          CUR_CODEX:         ${{ steps.current.outputs.codex }}
+          CUR_SNAKEMAKE:     ${{ steps.current.outputs.snakemake }}
+          CUR_NF_CORE:       ${{ steps.current.outputs.nf_core }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="auto-update/$(date +%Y%m%d-%H%M)"
+          DATE_TAG=$(date +%Y%m%d)
+
+          git config user.email "action@github.com"
+          git config user.name "GitHub Actions"
+          git checkout -b "$BRANCH"
+          git add Dockerfile README.md
+          git commit -m "chore: bump tool versions [automated]
+
+          Claude Code:  ${CUR_CLAUDE} -> ${CLAUDE_VERSION}
+          Gemini CLI:   ${CUR_GEMINI} -> ${GEMINI_VERSION}
+          OpenAI Codex: ${CUR_CODEX} -> ${CODEX_VERSION}
+          Snakemake:    ${CUR_SNAKEMAKE} -> ${SNAKEMAKE_VERSION}
+          nf-core:      ${CUR_NF_CORE} -> ${NF_CORE_VERSION}"
+          git push origin "$BRANCH"
+
+          # Fill placeholders in the checked-in PR body template
+          cp .github/pr-body-template.md /tmp/pr-body.md
+          sed -i "s/OLD_CLAUDE/${CUR_CLAUDE}/g;       s/NEW_CLAUDE/${CLAUDE_VERSION}/g"         /tmp/pr-body.md
+          sed -i "s/OLD_GEMINI/${CUR_GEMINI}/g;       s/NEW_GEMINI/${GEMINI_VERSION}/g"         /tmp/pr-body.md
+          sed -i "s/OLD_CODEX/${CUR_CODEX}/g;         s/NEW_CODEX/${CODEX_VERSION}/g"           /tmp/pr-body.md
+          sed -i "s/OLD_SNAKEMAKE/${CUR_SNAKEMAKE}/g; s/NEW_SNAKEMAKE/${SNAKEMAKE_VERSION}/g"   /tmp/pr-body.md
+          sed -i "s/OLD_NF_CORE/${CUR_NF_CORE}/g;     s/NEW_NF_CORE/${NF_CORE_VERSION}/g"       /tmp/pr-body.md
+          sed -i "s/DATE_TAG/${DATE_TAG}/g"                                                      /tmp/pr-body.md
+
+          gh pr create \
+            --title "chore: bump tool versions ($(date +%Y-%m-%d))" \
+            --body-file /tmp/pr-body.md \
+            --base main \
+            --head "$BRANCH" \
+            --label "auto-update"

@@ -1,155 +1,212 @@
 name: Build and Push Docker Image
 
+# Triggered by:
+#   - push to main  (when an auto-update or manual PR is merged)
+#   - pull_request  (validation build only — no push to Docker Hub)
+#   - workflow_dispatch (manual run)
+#
+# Daily version-checking lives in check-versions.yml.
+
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  schedule:
-    - cron: '0 17 * * *'   # daily at 12:00 PM EST (5:00 PM UTC)
   workflow_dispatch:
 
-# Prevent overlapping runs (e.g., two schedules colliding with a push)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.event_name }}
   cancel-in-progress: true
 
 env:
-  DOCKER_REGISTRY: docker.io
   DOCKER_IMAGE: sahuno/claude_gemini_container
 
-# Only what's needed. (We commit on schedule in the "Save version info" step.)
-permissions:
-  contents: write
-
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 1: validate
+#   Builds a local amd64 image, runs smoke tests, and runs Trivy.
+#   Runs on every event (push, PR, manual). Never pushes to Docker Hub.
+# ─────────────────────────────────────────────────────────────────────────────
 jobs:
-  check-updates:
+  validate:
     runs-on: ubuntu-latest
+
+    permissions:
+      security-events: write   # upload Trivy SARIF to Security tab
+
     outputs:
-      should_build: ${{ steps.decision.outputs.should_build }}
-      claude_version: ${{ steps.cli_versions.outputs.claude_version }}
-      gemini_version: ${{ steps.cli_versions.outputs.gemini_version }}
-      codex_version: ${{ steps.cli_versions.outputs.codex_version }}
-      snakemake_version: ${{ steps.cli_versions.outputs.snakemake_version }}
-      nf_core_version: ${{ steps.cli_versions.outputs.nf_core_version }}
-      build_date: ${{ steps.cli_versions.outputs.build_date }}
+      claude:     ${{ steps.versions.outputs.claude }}
+      gemini:     ${{ steps.versions.outputs.gemini }}
+      codex:      ${{ steps.versions.outputs.codex }}
+      snakemake:  ${{ steps.versions.outputs.snakemake }}
+      nf_core:    ${{ steps.versions.outputs.nf_core }}
+      build_date: ${{ steps.versions.outputs.build_date }}
+      date_tag:   ${{ steps.versions.outputs.date_tag }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Resolve tool versions
-        id: cli_versions
+      # Dockerfile ARG defaults are the single source of truth for versions.
+      - name: Extract versions from Dockerfile
+        id: versions
         run: |
-          CLAUDE_VERSION=$(npm view @anthropic-ai/claude-code version)
-          GEMINI_VERSION=$(npm view @google/gemini-cli version)
-          CODEX_VERSION=$(npm view @openai/codex version)
-          SNAKEMAKE_VERSION=$(python3 -c "import json, urllib.request; data = json.load(urllib.request.urlopen('https://pypi.org/pypi/snakemake/json', timeout=30)); print(data['info']['version'])")
-          NF_CORE_VERSION=$(python3 -c "import json, urllib.request; data = json.load(urllib.request.urlopen('https://pypi.org/pypi/nf-core/json', timeout=30)); print(data['info']['version'])")
-          echo "claude_version=$CLAUDE_VERSION" >> $GITHUB_OUTPUT
-          echo "gemini_version=$GEMINI_VERSION" >> $GITHUB_OUTPUT
-          echo "codex_version=$CODEX_VERSION" >> $GITHUB_OUTPUT
-          echo "snakemake_version=$SNAKEMAKE_VERSION" >> $GITHUB_OUTPUT
-          echo "nf_core_version=$NF_CORE_VERSION" >> $GITHUB_OUTPUT
-          echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+          echo "claude=$(grep '^ARG CLAUDE_VERSION='       Dockerfile | cut -d= -f2)" >> $GITHUB_OUTPUT
+          echo "gemini=$(grep '^ARG GEMINI_VERSION='       Dockerfile | cut -d= -f2)" >> $GITHUB_OUTPUT
+          echo "codex=$(grep '^ARG CODEX_VERSION='         Dockerfile | cut -d= -f2)" >> $GITHUB_OUTPUT
+          echo "snakemake=$(grep '^ARG SNAKEMAKE_VERSION=' Dockerfile | cut -d= -f2)" >> $GITHUB_OUTPUT
+          echo "nf_core=$(grep '^ARG NF_CORE_VERSION='     Dockerfile | cut -d= -f2)" >> $GITHUB_OUTPUT
+          echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"                         >> $GITHUB_OUTPUT
+          echo "date_tag=$(date +'%Y%m%d')"                                           >> $GITHUB_OUTPUT
 
-      # Only runs on schedule; for other events, we skip and let decision step set should_build=true
-      - name: Check for CLI updates
-        id: check_versions
-        if: github.event_name == 'schedule'
-        env:
-          CLAUDE_LATEST: ${{ steps.cli_versions.outputs.claude_version }}
-          GEMINI_LATEST: ${{ steps.cli_versions.outputs.gemini_version }}
-          CODEX_LATEST: ${{ steps.cli_versions.outputs.codex_version }}
-          SNAKEMAKE_LATEST: ${{ steps.cli_versions.outputs.snakemake_version }}
-          NF_CORE_LATEST: ${{ steps.cli_versions.outputs.nf_core_version }}
-        run: |
-          NEEDS_BUILD=false
-          if [ -f .last_built_versions ]; then
-            source .last_built_versions
-            if [ "$CLAUDE_LATEST" != "${LAST_CLAUDE_VERSION:-}" ] || \
-               [ "$GEMINI_LATEST" != "${LAST_GEMINI_VERSION:-}" ] || \
-               [ "$CODEX_LATEST" != "${LAST_CODEX_VERSION:-}" ] || \
-               [ "$SNAKEMAKE_LATEST" != "${LAST_SNAKEMAKE_VERSION:-}" ] || \
-               [ "$NF_CORE_LATEST" != "${LAST_NF_CORE_VERSION:-}" ]; then
-              NEEDS_BUILD=true
-            fi
-          else
-            NEEDS_BUILD=true
-          fi
-          echo "needs_update=$NEEDS_BUILD" >> $GITHUB_OUTPUT
-
-      - name: Decide whether to build
-        id: decision
-        run: |
-          if [[ "${{ github.event_name }}" != "schedule" ]] || [[ "${{ steps.check_versions.outputs.needs_update }}" == "true" ]]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_build=false" >> $GITHUB_OUTPUT
-          fi
-
-  build:
-    needs: check-updates
-    if: needs.check-updates.outputs.should_build == 'true'
-    runs-on: ubuntu-latest
-
-    # Make environment-scoped secrets available to this job
-    environment:
-      name: DOCKER
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU (for multi-arch emulation)
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # SAFETY: never use secrets on pull_request runs (includes forks)
-      - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}     # from Environment: DOCKER
-          password: ${{ secrets.DOCKERHUB_TOKEN }}     # from Environment: DOCKER
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.DOCKER_IMAGE }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=schedule,pattern=nightly
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix={{branch}}-
-            type=raw,value={{date 'YYYYMMDD'}},enable=${{ github.event_name == 'schedule' }}
-
-      - name: Build and (conditionally) push image
+      # Build amd64-only and load into the local Docker daemon for testing.
+      # --cache-to seeds the GHA layer cache so the deploy job reuses layers.
+      - name: Build test image (amd64, local load)
         uses: docker/build-push-action@v5
         with:
           context: .
-          # PRs build for validation but never push
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: false
+          load: true
+          tags: ${{ env.DOCKER_IMAGE }}:test
+          platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
           build-args: |
-            CLAUDE_VERSION=${{ needs.check-updates.outputs.claude_version }}
-            GEMINI_VERSION=${{ needs.check-updates.outputs.gemini_version }}
-            CODEX_VERSION=${{ needs.check-updates.outputs.codex_version }}
-            SNAKEMAKE_VERSION=${{ needs.check-updates.outputs.snakemake_version }}
-            NF_CORE_VERSION=${{ needs.check-updates.outputs.nf_core_version }}
-            BUILD_DATE=${{ needs.check-updates.outputs.build_date }}
+            CLAUDE_VERSION=${{ steps.versions.outputs.claude }}
+            GEMINI_VERSION=${{ steps.versions.outputs.gemini }}
+            CODEX_VERSION=${{ steps.versions.outputs.codex }}
+            SNAKEMAKE_VERSION=${{ steps.versions.outputs.snakemake }}
+            NF_CORE_VERSION=${{ steps.versions.outputs.nf_core }}
+            BUILD_DATE=${{ steps.versions.outputs.build_date }}
 
-      # Only on push to main; still inside DOCKER environment; safe to use secrets
+      # ── Smoke tests ──────────────────────────────────────────────────────
+      - name: Smoke test
+        run: |
+          IMAGE="${{ env.DOCKER_IMAGE }}:test"
+          echo "=== Smoke Testing Container ==="
+
+          echo "--- Claude Code ---"
+          docker run --rm "$IMAGE" claude --version
+
+          echo "--- Gemini CLI ---"
+          docker run --rm "$IMAGE" sh -c "gemini --version 2>&1 || gemini version 2>&1 || (echo 'gemini --version not available; checking binary' && which gemini)"
+
+          echo "--- OpenAI Codex ---"
+          docker run --rm "$IMAGE" sh -c "which codex && (codex --version 2>&1 | head -3 || echo 'codex binary present')"
+
+          echo "--- Python stack ---"
+          docker run --rm "$IMAGE" python3 -c "
+          import numpy, pandas, matplotlib, seaborn, scipy, sklearn
+          print('numpy', numpy.__version__)
+          print('pandas', pandas.__version__)
+          print('matplotlib', matplotlib.__version__)
+          print('Python stack OK')
+          "
+
+          echo "--- Snakemake ---"
+          docker run --rm "$IMAGE" snakemake --version
+
+          echo "--- Nextflow ---"
+          docker run --rm "$IMAGE" nextflow -version 2>&1 | head -3 || true
+
+          echo "--- container-info ---"
+          docker run --rm "$IMAGE" container-info
+
+          echo "=== All smoke tests passed ==="
+
+      # ── Security scan ─────────────────────────────────────────────────────
+      # exit-code=0: findings are reported to the Security tab but do NOT
+      # fail the build.  Adjust to '1' to enforce a hard gate.
+      - name: Security scan (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_IMAGE }}:test
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+
+      - name: Upload Trivy SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true   # needs GitHub Advanced Security; graceful on private repos
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-container
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 2: deploy
+#   Builds multi-arch (amd64 + arm64) and pushes three tags to Docker Hub.
+#   Creates a GitHub Release with pinned pull commands.
+#   Only runs on push to main (never on PRs).
+# ─────────────────────────────────────────────────────────────────────────────
+  deploy:
+    needs: validate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    # DOCKER environment scopes the Docker Hub push secrets.
+    environment:
+      name: DOCKER
+
+    permissions:
+      contents: write   # create GitHub Releases
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Three tags:
+      #   :latest           — always the most recent image
+      #   :claude-X.Y.Z     — pinned to the Claude Code version
+      #   :YYYYMMDD         — date-pinned for reproducible pulls
+      # amd64 layers are already cached from the validate job.
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE }}:latest
+            ${{ env.DOCKER_IMAGE }}:claude-${{ needs.validate.outputs.claude }}
+            ${{ env.DOCKER_IMAGE }}:${{ needs.validate.outputs.date_tag }}
+          labels: |
+            org.opencontainers.image.title=AI CLI + Bioinformatics Container
+            org.opencontainers.image.description=Claude Code, Gemini CLI, OpenAI Codex, Snakemake, Nextflow
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ needs.validate.outputs.build_date }}
+            claude.version=${{ needs.validate.outputs.claude }}
+            gemini.version=${{ needs.validate.outputs.gemini }}
+            codex.version=${{ needs.validate.outputs.codex }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          build-args: |
+            CLAUDE_VERSION=${{ needs.validate.outputs.claude }}
+            GEMINI_VERSION=${{ needs.validate.outputs.gemini }}
+            CODEX_VERSION=${{ needs.validate.outputs.codex }}
+            SNAKEMAKE_VERSION=${{ needs.validate.outputs.snakemake }}
+            NF_CORE_VERSION=${{ needs.validate.outputs.nf_core }}
+            BUILD_DATE=${{ needs.validate.outputs.build_date }}
+
       - name: Update Docker Hub description
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         uses: peter-evans/dockerhub-description@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -157,30 +214,37 @@ jobs:
           repository: sahuno/claude_gemini_container
           readme-filepath: ./README.md
 
-      # Only on scheduled builds; commits version file back to main
-      - name: Save version info
-        if: github.event_name == 'schedule' && success()
+      # Create a GitHub Release for every build on main.
+      # Provides a permanent browsable history with pinned pull commands.
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main'
         env:
-          CLAUDE_VERSION: ${{ needs.check-updates.outputs.claude_version }}
-          GEMINI_VERSION: ${{ needs.check-updates.outputs.gemini_version }}
-          CODEX_VERSION: ${{ needs.check-updates.outputs.codex_version }}
-          SNAKEMAKE_VERSION: ${{ needs.check-updates.outputs.snakemake_version }}
-          NF_CORE_VERSION: ${{ needs.check-updates.outputs.nf_core_version }}
+          CLAUDE_VERSION:    ${{ needs.validate.outputs.claude }}
+          GEMINI_VERSION:    ${{ needs.validate.outputs.gemini }}
+          CODEX_VERSION:     ${{ needs.validate.outputs.codex }}
+          SNAKEMAKE_VERSION: ${{ needs.validate.outputs.snakemake }}
+          NF_CORE_VERSION:   ${{ needs.validate.outputs.nf_core }}
+          DATE_TAG:          ${{ needs.validate.outputs.date_tag }}
+          GH_TOKEN:          ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cat > .last_built_versions << EOF
-          LAST_CLAUDE_VERSION=$CLAUDE_VERSION
-          LAST_GEMINI_VERSION=$GEMINI_VERSION
-          LAST_CODEX_VERSION=$CODEX_VERSION
-          LAST_SNAKEMAKE_VERSION=$SNAKEMAKE_VERSION
-          LAST_NF_CORE_VERSION=$NF_CORE_VERSION
-          LAST_BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          EOF
-          if git diff --quiet .last_built_versions 2>/dev/null; then
-            echo "No version changes to commit"
-          else
-            git config --local user.email "action@github.com"
-            git config --local user.name "GitHub Action"
-            git add .last_built_versions
-            git commit -m "Update CLI versions - Claude: $CLAUDE_VERSION, Gemini: $GEMINI_VERSION, Codex: $CODEX_VERSION"
-            git push origin HEAD:main
+          TAG="claude-${CLAUDE_VERSION}-${DATE_TAG}"
+
+          # Idempotent: skip if this exact release already exists
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists — skipping."
+            exit 0
           fi
+
+          # Fill placeholders in the checked-in release notes template
+          cp .github/release-notes-template.md /tmp/release-notes.md
+          sed -i "s/CLAUDE_VER/${CLAUDE_VERSION}/g"         /tmp/release-notes.md
+          sed -i "s/GEMINI_VER/${GEMINI_VERSION}/g"         /tmp/release-notes.md
+          sed -i "s/CODEX_VER/${CODEX_VERSION}/g"           /tmp/release-notes.md
+          sed -i "s/SNAKEMAKE_VER/${SNAKEMAKE_VERSION}/g"   /tmp/release-notes.md
+          sed -i "s/NF_CORE_VER/${NF_CORE_VERSION}/g"       /tmp/release-notes.md
+          sed -i "s/DATE_TAG_VAL/${DATE_TAG}/g"             /tmp/release-notes.md
+
+          gh release create "$TAG" \
+            --title "Container Release: Claude ${CLAUDE_VERSION} (${DATE_TAG})" \
+            --notes-file /tmp/release-notes.md \
+            --latest
