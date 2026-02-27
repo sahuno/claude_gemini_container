@@ -2,16 +2,16 @@
 
 This repository provides containerized versions of Claude Code and Gemini CLI with Python data science libraries and bioinformatics workflow management tools (Snakemake, Nextflow, nf-core).
 
-## Current Versions (Updated: January 2026)
+## Current Versions (Updated: February 2026)
 
 | Tool | Version | Description |
 |------|---------|-------------|
-| **Claude Code** | 2.1.39 | Anthropic's AI-assisted coding CLI |
-| **Gemini CLI** | 0.27.2 | Google's Gemini AI CLI |
-| **OpenAI Codex** | 0.98.0 | OpenAI's Codex CLI |
-| **Snakemake** | 9.15.0 | Workflow management system |
+| **Claude Code** | 2.1.62 | Anthropic's AI-assisted coding CLI |
+| **Gemini CLI** | 0.30.0 | Google's Gemini AI CLI |
+| **OpenAI Codex** | 0.106.0 | OpenAI's Codex CLI |
+| **Snakemake** | 9.16.3 | Workflow management system |
 | **Nextflow** | latest | Data-driven computational pipelines |
-| **nf-core** | 3.5.1 | Community curated Nextflow pipelines |
+| **nf-core** | 3.5.2 | Community curated Nextflow pipelines |
 | **Apptainer** | 1.4.0 | Container runtime (AMD64 only) |
 | **Python** | 3.x | With scientific computing stack |
 | **Java** | OpenJDK 17 | Required for Nextflow |
