@@ -84,13 +84,17 @@ jobs:
           echo "changed=$CHANGED" >> $GITHUB_OUTPUT
           [ "$CHANGED" = "false" ] && echo "No version changes detected — skipping PR creation." || true
 
-      # ── Guard: skip if an auto-update PR is already open ───────────────
+      # ── Ensure the auto-update label exists, then guard against duplicate PRs ─
       - name: Check for existing auto-update PR
         if: steps.changes.outputs.changed == 'true'
         id: existing_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          gh label create "auto-update" \
+            --color "0075ca" \
+            --description "Automated dependency version bump" \
+            2>/dev/null || true   # no-op if the label already exists
           COUNT=$(gh pr list --state open --label "auto-update" --json number --jq 'length')
           echo "count=$COUNT" >> $GITHUB_OUTPUT
           [ "$COUNT" -gt 0 ] && echo "Open auto-update PR already exists — skipping." || true
