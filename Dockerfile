@@ -2,7 +2,7 @@
 FROM node:20-slim AS base
 
 # Build arguments to force cache invalidation when CLI versions change
-ARG CLAUDE_VERSION=2.1.63
+ARG CLAUDE_VERSION=2.1.68
 ARG GEMINI_VERSION=0.31.0
 ARG CODEX_VERSION=0.106.0
 ARG BUILD_DATE
