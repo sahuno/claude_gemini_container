@@ -153,6 +153,7 @@ jobs:
 
       # ── Create branch, commit, and open PR ─────────────────────────────
       - name: Open pull request
+        id: open_pr
         if: steps.changes.outputs.changed == 'true' && steps.existing_pr.outputs.count == '0'
         env:
           CLAUDE_VERSION:    ${{ steps.latest.outputs.claude }}
@@ -192,9 +193,20 @@ jobs:
           sed -i "s/OLD_NF_CORE/${CUR_NF_CORE}/g;     s/NEW_NF_CORE/${NF_CORE_VERSION}/g"       /tmp/pr-body.md
           sed -i "s/DATE_TAG/${DATE_TAG}/g"                                                      /tmp/pr-body.md
 
-          gh pr create \
+          PR_URL=$(gh pr create \
             --title "chore: bump tool versions ($(date +%Y-%m-%d))" \
             --body-file /tmp/pr-body.md \
             --base main \
             --head "$BRANCH" \
-            --label "auto-update"
+            --label "auto-update")
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+
+      # ── Auto-merge the PR (no branch protection → direct merge) ───────
+      - name: Auto-merge version bump PR
+        if: steps.changes.outputs.changed == 'true' && steps.existing_pr.outputs.count == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL="${{ steps.open_pr.outputs.pr_url }}"
+          echo "Merging $PR_URL"
+          gh pr merge "$PR_URL" --merge --delete-branch
