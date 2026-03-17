@@ -1,8 +1,8 @@
 name: Check for Tool Version Updates
 
 # Runs daily, detects version bumps in any AI CLI or bioinformatics tool,
-# and opens a PR to update the Dockerfile + README. The actual Docker
-# build/push only happens when that PR is merged to main (docker-build.yml).
+# opens a PR to update the Dockerfile + README, auto-merges it, and
+# dispatches docker-build.yml to build and push the new image.
 
 on:
   schedule:
@@ -210,3 +210,14 @@ jobs:
           PR_URL="${{ steps.open_pr.outputs.pr_url }}"
           echo "Merging $PR_URL"
           gh pr merge "$PR_URL" --merge --delete-branch
+
+      # ── Trigger Docker build ──────────────────────────────────────────
+      # GITHUB_TOKEN merges don't trigger on:push workflows (GitHub's
+      # anti-recursion guard), so we explicitly dispatch docker-build.
+      - name: Trigger Docker image build
+        if: steps.changes.outputs.changed == 'true' && steps.existing_pr.outputs.count == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Dispatching docker-build workflow"
+          gh workflow run docker-build.yml --ref main
