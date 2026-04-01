@@ -2,11 +2,11 @@
 
 Containerized AI coding assistants (Claude Code, Gemini CLI, OpenAI Codex) with bioinformatics workflow tools (Snakemake, Nextflow, nf-core). Multi-arch: amd64 + arm64.
 
-## Current Versions (Updated: March 2026)
+## Current Versions (Updated: April 2026)
 
 | Tool | Version | Description |
 |------|---------|-------------|
-| **Claude Code** | 2.1.87 | Anthropic's AI coding CLI |
+| **Claude Code** | 2.1.89 | Anthropic's AI coding CLI |
 | **Gemini CLI** | 0.35.3 | Google's Gemini AI CLI |
 | **OpenAI Codex** | 0.118.0 | OpenAI's Codex CLI |
 | **Snakemake** | 9.19.0 | Workflow management system |
