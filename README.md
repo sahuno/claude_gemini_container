@@ -6,9 +6,9 @@ Containerized AI coding assistants (Claude Code, Gemini CLI, OpenAI Codex) with 
 
 | Tool | Version | Description |
 |------|---------|-------------|
-| **Claude Code** | 2.1.152 | Anthropic's AI coding CLI |
-| **Gemini CLI** | 0.43.0 | Google's Gemini AI CLI |
-| **OpenAI Codex** | 0.134.0 | OpenAI's Codex CLI |
+| **Claude Code** | 2.1.154 | Anthropic's AI coding CLI |
+| **Gemini CLI** | 0.44.1 | Google's Gemini AI CLI |
+| **OpenAI Codex** | 0.135.0 | OpenAI's Codex CLI |
 | **Snakemake** | 9.21.0 | Workflow management system |
 | **nf-core** | 4.0.2 | Community curated Nextflow pipelines |
 
