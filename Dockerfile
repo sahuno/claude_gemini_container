@@ -3,7 +3,7 @@ FROM node:20-slim AS base
 
 # Build arguments to force cache invalidation when CLI versions change
 ARG CLAUDE_VERSION=2.1.220
-ARG GEMINI_VERSION=0.53.0
+ARG GEMINI_VERSION=0.53.1
 ARG CODEX_VERSION=0.146.0
 ARG BUILD_DATE
 ARG SNAKEMAKE_VERSION=9.24.0
